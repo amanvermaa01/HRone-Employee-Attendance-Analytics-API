@@ -1,0 +1,43 @@
+"""Loads the nine sample documents from sample_data/ (see DATA_MODEL.md) into your database.
+Usage:  python sample_seed.py            (reads MONGO_URI / MONGO_DB from the environment or .env)
+
+Equivalent with the MongoDB tools:
+  mongoimport --uri "$MONGO_URI" --db "$MONGO_DB" -c employees       --jsonArray --drop --file sample_data/employees.json
+  mongoimport --uri "$MONGO_URI" --db "$MONGO_DB" -c attendance_logs --jsonArray --drop --file sample_data/attendance_logs.json
+
+The samples show document SHAPES only. The grader uses a much larger hidden dataset with cases they do not show.
+Passing on this sample does not mean your analytics are correct - re-read the business rules."""
+import os
+import pathlib
+
+from bson import json_util
+from dotenv import load_dotenv
+from pymongo import MongoClient
+
+base_dir = pathlib.Path(__file__).resolve().parent
+# Load .env from root and app/ directory
+load_dotenv(base_dir / ".env")
+load_dotenv(base_dir / "app" / ".env")
+load_dotenv()
+
+here = base_dir / "sample_data"
+opts = json_util.JSONOptions(tz_aware=True)
+mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+mongo_db = os.getenv("MONGO_DB", "attendance_db")
+
+print(f"Connecting to MongoDB database '{mongo_db}'...")
+client = MongoClient(mongo_uri, tz_aware=True, serverSelectionTimeoutMS=10000)
+# Force server selection to test connection early
+client.admin.command("ping")
+db = client[mongo_db]
+
+for name in ("employees", "attendance_logs"):
+    data_file = here / f"{name}.json"
+    if not data_file.exists():
+        raise FileNotFoundError(f"Sample data file not found: {data_file}")
+    docs = json_util.loads(data_file.read_text(encoding="utf-8"), json_options=opts)
+    db[name].delete_many({})
+    if docs:
+        db[name].insert_many(docs)
+    print(f"loaded {len(docs):>2} documents into '{db.name}.{name}'")
+
